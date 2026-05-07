@@ -4,7 +4,7 @@ return [
 
     'player_api_base_url' => rtrim(env(
         'IPTV_PLAYER_API_URL',
-        'https://cf.8kplayer-sh12.com/player_api.php'
+        'https://cf.8kplayer-sh13.com/player_api.php'
     ), '?'),
 
     /** لغة رسائل الـ API عند غياب Accept-Language أو ?locale */
