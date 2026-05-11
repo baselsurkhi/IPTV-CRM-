@@ -23,6 +23,7 @@ return [
     'registered_ip' => 'IP רישום',
     'last_ip' => 'IP אחרון',
     'status' => 'סטטוס',
+    'subscriber_name' => 'שם המנוי',
     'iptv_username' => 'שם משתמש IPTV',
     'last_login' => 'כניסה אחרונה',
     'approved_at' => 'זמן אישור',

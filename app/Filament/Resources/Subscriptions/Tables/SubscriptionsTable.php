@@ -33,6 +33,10 @@ class SubscriptionsTable
                     ->copyable()
                     ->fontFamily('mono')
                     ->weight(FontWeight::Medium),
+                TextColumn::make('subscriber_name')
+                    ->label(__('admin.subscriber_name'))
+                    ->searchable()
+                    ->toggleable(),
                 TextColumn::make('iptv_username')
                     ->label(__('admin.iptv_username'))
                     ->searchable()
@@ -162,6 +166,10 @@ class SubscriptionsTable
                                 ])->all())
                                 ->default(SubscriptionPlan::Standard->value)
                                 ->required(),
+                            TextInput::make('subscriber_name')
+                                ->label(__('admin.subscriber_name'))
+                                ->default(fn (Device $record): ?string => $record->subscriber_name)
+                                ->maxLength(255),
                             TextInput::make('iptv_username')
                                 ->label(__('admin.players_username'))
                                 ->default(fn (Device $record): ?string => $record->iptv_username)
@@ -315,6 +323,12 @@ class SubscriptionsTable
 
         if (array_key_exists('iptv_username', $data) && filled($data['iptv_username'])) {
             $updates['iptv_username'] = $data['iptv_username'];
+        }
+
+        if (array_key_exists('subscriber_name', $data)) {
+            $updates['subscriber_name'] = filled($data['subscriber_name'])
+                ? $data['subscriber_name']
+                : null;
         }
 
         if (array_key_exists('iptv_password', $data) && filled($data['iptv_password'])) {

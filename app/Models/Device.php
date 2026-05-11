@@ -12,6 +12,7 @@ use Laravel\Sanctum\HasApiTokens;
 
 #[Fillable([
     'device_id',
+    'subscriber_name',
     'registered_ip',
     'last_seen_ip',
     'status',
