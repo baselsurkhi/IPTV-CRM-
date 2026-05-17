@@ -25,10 +25,13 @@ class DeviceForm
                             ->maxLength(191)
                             ->unique(table: Device::class, column: 'device_id', ignoreRecord: true)
                             ->helperText('Unique device identifier'),
+                        TextInput::make('device_name')
+                            ->label(__('admin.device_name'))
+                            ->maxLength(255),
                         Select::make('status')
                             ->label(__('admin.approval_status'))
                             ->options(
-                                collect(DeviceStatus::cases())->mapWithKeys(fn(DeviceStatus $s): array => [
+                                collect(DeviceStatus::cases())->mapWithKeys(fn (DeviceStatus $s): array => [
                                     $s->value => $s->label(),
                                 ])->all()
                             )

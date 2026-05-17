@@ -23,6 +23,7 @@ return [
     'registered_ip' => 'Registration IP',
     'last_ip' => 'Last IP',
     'status' => 'Status',
+    'device_name' => 'Device name',
     'subscriber_name' => 'Subscriber name',
     'iptv_username' => 'IPTV username',
     'last_login' => 'Last login',

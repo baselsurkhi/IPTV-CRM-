@@ -22,6 +22,7 @@ class DeviceAuthTest extends TestCase
         $this->withHeaders($this->englishApi())
             ->postJson('/api/v1/device/register', [
                 'device_id' => 'device-1777899551996',
+                'device_name' => 'Living Room TV',
                 'ip_address' => '192.168.1.100',
             ])->assertOk()
             ->assertJsonPath('status', 'pending')
@@ -29,6 +30,7 @@ class DeviceAuthTest extends TestCase
 
         $this->assertDatabaseHas('devices', [
             'device_id' => 'device-1777899551996',
+            'device_name' => 'Living Room TV',
             'registered_ip' => '192.168.1.100',
             'status' => 'pending',
         ]);
@@ -67,6 +69,33 @@ class DeviceAuthTest extends TestCase
         $this->assertStringContainsString('username=u1', $res->json('player_api_url'));
         $this->assertStringContainsString('password=', $res->json('player_api_url'));
         $res->assertJsonPath('subscription_status', 'active');
+    }
+
+    public function test_session_rebuilds_player_api_url_when_base_contains_empty_credentials(): void
+    {
+        Device::query()->create([
+            'device_id' => 'device-player-api-query-001',
+            'registered_ip' => '10.0.0.4',
+            'status' => DeviceStatus::Approved,
+            'iptv_username' => '05482222112',
+            'iptv_password' => '20304050',
+            'player_api_base_url' => 'http://cf.tcl-system.com/player_api.php?username=&password=',
+            'subscribed_at' => now(),
+            'expires_at' => now()->addMonth(),
+            'subscription_plan' => SubscriptionPlan::Standard,
+        ]);
+
+        $res = $this->withHeaders($this->englishApi())
+            ->postJson('/api/v1/device/session', [
+                'device_id' => 'device-player-api-query-001',
+                'ip_address' => '10.0.0.4',
+            ]);
+
+        $res->assertOk();
+        $this->assertSame(
+            'https://cf.tcl-system.com/player_api.php?username=05482222112&password=20304050',
+            $res->json('player_api_url')
+        );
     }
 
     public function test_session_requires_an_active_subscription(): void

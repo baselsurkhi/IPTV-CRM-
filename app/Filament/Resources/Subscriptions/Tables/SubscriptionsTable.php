@@ -35,6 +35,10 @@ class SubscriptionsTable
                     ->copyable()
                     ->fontFamily('mono')
                     ->weight(FontWeight::Medium),
+                TextColumn::make('device_name')
+                    ->label(__('admin.device_name'))
+                    ->searchable()
+                    ->toggleable(),
                 TextColumn::make('subscriber_name')
                     ->label(__('admin.subscriber_name'))
                     ->searchable()

@@ -14,6 +14,7 @@ class DeviceAuthController extends Controller
     {
         $data = $request->validate([
             'device_id' => ['required', 'string', 'max:191'],
+            'device_name' => ['sometimes', 'nullable', 'string', 'max:255'],
             'ip_address' => ['required', 'string', 'max:45'],
         ]);
 
@@ -33,6 +34,7 @@ class DeviceAuthController extends Controller
 
         $device->registered_ip = $data['ip_address'];
         $device->last_seen_ip = $data['ip_address'];
+        $this->syncDeviceName($device, $data);
 
         if (! $device->exists) {
             $device->status = DeviceStatus::Pending;
@@ -57,6 +59,7 @@ class DeviceAuthController extends Controller
     {
         $data = $request->validate([
             'device_id' => ['required', 'string', 'max:191'],
+            'device_name' => ['sometimes', 'nullable', 'string', 'max:255'],
             'ip_address' => ['required', 'string', 'max:45'],
         ]);
 
@@ -87,6 +90,7 @@ class DeviceAuthController extends Controller
         }
 
         $device->last_seen_ip = $data['ip_address'];
+        $this->syncDeviceName($device, $data);
         $device->save();
 
         if ($device->status === DeviceStatus::Blocked) {
@@ -181,5 +185,16 @@ class DeviceAuthController extends Controller
             $device->locked_until = now()->addMinutes((int) config('iptv.lockout_duration_minutes', 30));
         }
         $device->save();
+    }
+
+    private function syncDeviceName(Device $device, array $data): void
+    {
+        if (! array_key_exists('device_name', $data)) {
+            return;
+        }
+
+        $device->device_name = filled($data['device_name'])
+            ? trim((string) $data['device_name'])
+            : null;
     }
 }

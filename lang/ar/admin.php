@@ -23,6 +23,7 @@ return [
     'registered_ip' => 'IP التسجيل',
     'last_ip' => 'آخر IP',
     'status' => 'الحالة',
+    'device_name' => 'اسم الجهاز',
     'subscriber_name' => 'اسم المشترك',
     'iptv_username' => 'يوزر IPTV',
     'last_login' => 'آخر دخول',

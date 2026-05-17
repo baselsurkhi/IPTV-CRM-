@@ -32,6 +32,10 @@ class DevicesTable
                     ->copyable()
                     ->fontFamily('mono')
                     ->weight(FontWeight::Medium),
+                TextColumn::make('device_name')
+                    ->label(__('admin.device_name'))
+                    ->searchable()
+                    ->toggleable(),
                 TextColumn::make('registered_ip')
                     ->label(__('admin.registered_ip'))
                     ->searchable(),

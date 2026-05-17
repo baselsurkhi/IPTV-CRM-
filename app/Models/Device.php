@@ -12,6 +12,7 @@ use Laravel\Sanctum\HasApiTokens;
 
 #[Fillable([
     'device_id',
+    'device_name',
     'subscriber_name',
     'registered_ip',
     'last_seen_ip',
@@ -134,9 +135,18 @@ class Device extends Model
         $globalBase = SiteSetting::getValue('iptv.player_api_base_url');
         $base = $this->player_api_base_url ?: ($globalBase ?: config('iptv.player_api_base_url'));
 
-        return rtrim((string) $base, '?').'?'.http_build_query([
+        return self::normalizePlayerApiBaseUrl((string) $base).'?'.http_build_query([
             'username' => $this->iptv_username,
             'password' => $this->iptv_password,
         ]);
+    }
+
+    private static function normalizePlayerApiBaseUrl(string $base): string
+    {
+        $base = trim($base);
+        $base = preg_replace('/[?#].*$/', '', $base) ?: $base;
+        $base = preg_replace('/^http:\/\//i', 'https://', $base) ?: $base;
+
+        return rtrim($base, '/?');
     }
 }
