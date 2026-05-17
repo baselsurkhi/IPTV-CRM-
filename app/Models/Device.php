@@ -32,6 +32,7 @@ use Laravel\Sanctum\HasApiTokens;
     'subscription_months',
     'subscription_plan',
     'subscription_notes',
+    'isdeleted',
 ])]
 class Device extends Model
 {
@@ -50,6 +51,7 @@ class Device extends Model
             'subscribed_at' => 'datetime',
             'expires_at' => 'datetime',
             'subscription_plan' => SubscriptionPlan::class,
+            'isdeleted' => 'boolean',
         ];
     }
 

@@ -2,10 +2,12 @@
 
 namespace App\Filament\Resources\Subscriptions\Tables;
 
+use App\Authorization\PermissionsRegistry;
 use App\Enums\SubscriptionPlan;
 use App\Models\Device;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
+use Filament\Actions\BulkAction;
 use Filament\Actions\BulkActionGroup;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
@@ -306,6 +308,14 @@ class SubscriptionsTable
                                 notes: $data['notes'] ?? null,
                             );
                         }),
+
+                    Action::make('softDelete')
+                        ->label(__('filament-actions::delete.single.label'))
+                        ->icon(Heroicon::Trash)
+                        ->color('danger')
+                        ->requiresConfirmation()
+                        ->authorize(fn (Device $record): bool => Gate::allows('delete', $record))
+                        ->action(fn (Device $record): bool => $record->update(['isdeleted' => true])),
                 ])
                     ->label(__('admin.actions'))
                     ->icon(Heroicon::EllipsisVertical)
@@ -313,7 +323,19 @@ class SubscriptionsTable
                     ->button(),
             ])
             ->toolbarActions([
-                BulkActionGroup::make([]),
+                BulkActionGroup::make([
+                    BulkAction::make('softDelete')
+                        ->label(__('filament-actions::delete.multiple.label'))
+                        ->icon(Heroicon::Trash)
+                        ->color('danger')
+                        ->requiresConfirmation()
+                        ->authorize(fn (): bool => auth()->check() && auth()->user()?->can(
+                            PermissionsRegistry::DEVICES_DELETE
+                        ) === true)
+                        ->action(function ($records): void {
+                            $records->each->update(['isdeleted' => true]);
+                        }),
+                ]),
             ]);
     }
 
