@@ -17,6 +17,8 @@ class ManagedSessionController extends Controller
             'device_id' => ['required', 'uuid'],
             'installation_secret' => ['required', 'string', 'min:32', 'max:128'],
             'login_method' => ['required', 'in:xtream,m3u'],
+            'm3u_source_url' => ['nullable', 'string', 'max:8192', 'url:http,https'],
+            'xtream_server_url' => ['nullable', 'string', 'max:2048', 'url:http,https'],
             'device_name' => ['required', 'string', 'max:255'],
             'platform' => ['required', 'string', 'max:40'],
             'app_version' => ['required', 'string', 'max:80'],
@@ -38,6 +40,9 @@ class ManagedSessionController extends Controller
             abort_if($device->installationDenied(), 403);
             $device->forceFill([
                 'login_method' => $data['login_method'],
+                'm3u_source_url' => $data['login_method'] === 'm3u' ? ($data['m3u_source_url'] ?? null) : null,
+                'xtream_server_url' => $data['login_method'] === 'xtream'
+                    ? $this->serverUrl($data['xtream_server_url'] ?? null) : null,
                 'device_name' => $data['device_name'],
                 'platform' => $data['platform'],
                 'app_version' => $data['app_version'],
@@ -53,6 +58,20 @@ class ManagedSessionController extends Controller
 
             return response()->json(['access_token' => $token, 'status' => 'approved']);
         });
+    }
+
+    private function serverUrl(?string $url): ?string
+    {
+        if (blank($url)) {
+            return null;
+        }
+
+        // Store only the server address, never credentials or query tokens.
+        $parts = parse_url($url);
+
+        return strtolower($parts['scheme']).'://'.$parts['host']
+            .(isset($parts['port']) ? ':'.$parts['port'] : '')
+            .($parts['path'] ?? '');
     }
 
     public function destroy(Request $request): JsonResponse

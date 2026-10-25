@@ -40,6 +40,54 @@ class ManagedSessionTest extends TestCase
         $this->withToken($token)->getJson('/api/v1/subscription/status')->assertOk()->assertJsonPath('status', 'active');
     }
 
+    public function test_xtream_server_address_is_saved_without_credentials_and_updated(): void
+    {
+        $this->login(['xtream_server_url' => 'https://user:secret@provider.example:8443/sub/player_api.php?username=private&password=secret#token']);
+        $this->assertSame('https://provider.example:8443/sub/player_api.php', Device::first()->xtream_server_url);
+        $this->login(['xtream_server_url' => 'http://other.example:8080']);
+        $this->assertSame('http://other.example:8080', Device::first()->xtream_server_url);
+        $this->login(['login_method' => 'm3u']);
+        $this->assertNull(Device::first()->xtream_server_url);
+    }
+
+    public function test_xtream_server_rejects_non_http_urls(): void
+    {
+        $this->postJson('/api/v1/device/direct-session', $this->payload([
+            'xtream_server_url' => 'javascript:alert(1)',
+        ]))->assertUnprocessable()->assertJsonValidationErrors('xtream_server_url');
+    }
+
+    public function test_m3u_url_is_preserved_encrypted_and_visible_in_admin_form(): void
+    {
+        $url = 'https://provider.example/get.php?username=user&password=secret&type=m3u_plus';
+        $this->login(['login_method' => 'm3u', 'm3u_source_url' => $url]);
+        $device = Device::firstOrFail();
+        $this->assertSame($url, $device->m3u_source_url);
+        $this->assertStringNotContainsString('password=secret', $device->getRawOriginal('m3u_source_url'));
+        $this->assertArrayNotHasKey('m3u_source_url', $device->toArray());
+        $admin = User::factory()->create(['locale' => 'en']);
+        $admin->assignRole('super-admin');
+        $this->actingAs($admin)->get('/admin/device-registry/'.$device->id.'/edit')->assertOk()->assertSee('M3U playlist URL');
+        \Livewire\Livewire::test(\App\Filament\Resources\Devices\Pages\EditDevice::class, ['record' => $device->id])
+            ->assertSchemaStateSet(['m3u_source_url' => $url]);
+    }
+
+    public function test_m3u_url_updates_and_clears_when_switching_method(): void
+    {
+        $this->login(['login_method' => 'm3u', 'm3u_source_url' => 'https://provider.example/first.m3u']);
+        $this->login(['login_method' => 'm3u', 'm3u_source_url' => 'https://provider.example/new.m3u?token=abc']);
+        $this->assertSame('https://provider.example/new.m3u?token=abc', Device::first()->m3u_source_url);
+        $this->login();
+        $this->assertNull(Device::first()->m3u_source_url);
+    }
+
+    public function test_m3u_url_rejects_non_http_schemes(): void
+    {
+        $this->postJson('/api/v1/device/direct-session', $this->payload([
+            'login_method' => 'm3u', 'm3u_source_url' => 'javascript:alert(1)',
+        ]))->assertUnprocessable()->assertJsonValidationErrors('m3u_source_url');
+    }
+
     public function test_m3u_login_is_supported(): void
     {
         $this->login(['login_method' => 'm3u']);
@@ -109,10 +157,12 @@ class ManagedSessionTest extends TestCase
     {
         $admin = User::factory()->create(['locale' => 'en']);
         $admin->assignRole('super-admin');
-        $this->login();
+        $this->login(['xtream_server_url' => 'https://provider.example:8443']);
         $this->actingAs($admin)->get('/admin')->assertOk()->assertSee('Welcome back')->assertSee('Recently active devices');
         $this->get('/admin/device-registry')->assertOk()->assertSee('Living room');
-        $this->get('/admin/device-registry/'.Device::first()->id.'/edit')->assertOk()->assertSee('Device details');
+        $this->get('/admin/device-registry/'.Device::first()->id.'/edit')->assertOk()->assertSee('Device details')->assertSee('Xtream server URL');
+        \Livewire\Livewire::test(\App\Filament\Resources\Devices\Pages\EditDevice::class, ['record' => Device::first()->id])
+            ->assertSchemaStateSet(['xtream_server_url' => 'https://provider.example:8443']);
     }
 
     public function test_viewer_cannot_modify_devices(): void

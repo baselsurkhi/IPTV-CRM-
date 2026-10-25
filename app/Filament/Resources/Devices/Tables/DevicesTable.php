@@ -119,6 +119,16 @@ class DevicesTable
                         default => 'gray',
                     })
                     ->toggleable(isToggledHiddenByDefault: true),
+                TextColumn::make('m3u_source_url')
+                    ->label(__('control.m3u_source_url'))
+                    ->placeholder('—')->copyable()->limit(35)
+                    ->tooltip(fn (Device $record): ?string => $record->m3u_source_url)
+                    ->extraAttributes(['dir' => 'ltr'])->toggleable(),
+                TextColumn::make('xtream_server_url')
+                    ->label(__('control.xtream_server_url'))
+                    ->placeholder('—')->searchable()->copyable()->limit(35)
+                    ->tooltip(fn (Device $record): ?string => $record->xtream_server_url)
+                    ->extraAttributes(['dir' => 'ltr'])->toggleable(),
                 TextColumn::make('last_login_at')
                     ->label(__('admin.last_login'))
                     ->dateTime()

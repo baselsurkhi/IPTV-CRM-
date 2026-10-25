@@ -1,6 +1,9 @@
 <?php
 
 return [
+    'm3u_source_url' => 'M3U playlist URL',
+    'xtream_server_url' => 'Xtream server URL',
+    'xtream_server_url_missing' => 'Not available — sign in with the updated app',
     'subscriber' => 'Subscriber',
     'method' => 'Login method',
     'activation' => 'Activation',

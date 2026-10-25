@@ -41,7 +41,7 @@ class Device extends Model
 {
     use HasApiTokens, HasSubscription;
 
-    protected $hidden = ['installation_secret_hash', 'iptv_password'];
+    protected $hidden = ['installation_secret_hash', 'iptv_password', 'm3u_source_url'];
 
     protected static function booted(): void
     {
@@ -65,6 +65,7 @@ class Device extends Model
             'device_metadata' => 'array',
             'status' => DeviceStatus::class,
             'iptv_password' => 'encrypted',
+            'm3u_source_url' => 'encrypted',
             'approved_at' => 'datetime',
             'rejected_at' => 'datetime',
             'blocked_at' => 'datetime',

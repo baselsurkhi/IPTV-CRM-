@@ -1,6 +1,9 @@
 <?php
 
 return [
+    'm3u_source_url' => 'رابط اشتراك M3U',
+    'xtream_server_url' => 'رابط سيرفر Xtream',
+    'xtream_server_url_missing' => 'غير متوفر — يلزم تسجيل الدخول من التطبيق المحدّث',
     'subscriber' => 'المشترك',
     'method' => 'طريقة الدخول',
     'activation' => 'طلب تفعيل',

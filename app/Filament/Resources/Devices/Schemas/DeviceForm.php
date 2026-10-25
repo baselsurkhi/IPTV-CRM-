@@ -20,6 +20,19 @@ class DeviceForm
             ->components([
                 Section::make(__('control.telemetry'))->description(__('control.telemetry_help'))->columns(['md' => 2, 'xl' => 3])->columnSpanFull()->visibleOn('edit')->schema([
                     ...collect(['login_method', 'platform', 'app_version', 'public_ip', 'last_seen_at', 'last_login_at'])->map(fn ($field) => TextInput::make($field)->label(__('control.'.$field))->formatStateUsing(fn ($state) => blank($state) ? '—' : (in_array($field, ['last_seen_at', 'last_login_at']) ? Carbon::parse($state)->format('Y-m-d H:i') : ($field === 'login_method' ? __('control.'.$state) : $state)))->disabled()->dehydrated(false))->all(),
+                    TextInput::make('xtream_server_url')
+                        ->label(__('control.xtream_server_url'))
+                        ->placeholder(__('control.xtream_server_url_missing'))
+                        ->extraInputAttributes(['dir' => 'ltr'])
+                        ->disabled()->dehydrated(false)->columnSpanFull()
+                        ->visible(fn (?Device $record): bool => $record?->login_method === 'xtream'),
+                    Textarea::make('m3u_source_url')
+                        ->label(__('control.m3u_source_url'))
+                        ->placeholder(__('control.xtream_server_url_missing'))
+                        ->formatStateUsing(fn (?Device $record): ?string => $record?->m3u_source_url)
+                        ->extraInputAttributes(['dir' => 'ltr'])->rows(3)
+                        ->readOnly()->dehydrated(false)->columnSpanFull()
+                        ->visible(fn (?Device $record): bool => $record?->login_method === 'm3u'),
                     KeyValue::make('device_metadata')->label(__('control.telemetry'))->disabled()->dehydrated(false)->columnSpanFull(),
                 ]),
                 Section::make(__('admin.device_network_section'))
