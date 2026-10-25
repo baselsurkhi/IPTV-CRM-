@@ -14,6 +14,10 @@ class DeviceAuthController extends Controller
     {
         $data = $request->validate([
             'device_id' => ['required', 'string', 'max:191'],
+            'platform' => ['sometimes', 'string', 'max:40'],
+            'app_version' => ['sometimes', 'string', 'max:80'],
+            'metadata' => ['sometimes', 'array:manufacturer,model,release,sdkInt,brand,device,buildId,isTelevision,os_version,locale'],
+            'metadata.*' => ['nullable', 'string', 'max:255'],
             'device_name' => ['sometimes', 'nullable', 'string', 'max:255'],
             'ip_address' => ['required', 'string', 'max:45'],
         ]);
@@ -25,7 +29,7 @@ class DeviceAuthController extends Controller
         /** @var Device $device */
         $device = Device::query()->firstOrNew(['device_id' => $data['device_id']]);
 
-        if ($device->exists && $device->status === DeviceStatus::Blocked) {
+        if ($device->exists && $device->installationDenied()) {
             return response()->json([
                 'message' => __('api.blocked'),
                 'status' => $device->status->value,
@@ -59,6 +63,10 @@ class DeviceAuthController extends Controller
     {
         $data = $request->validate([
             'device_id' => ['required', 'string', 'max:191'],
+            'platform' => ['sometimes', 'string', 'max:40'],
+            'app_version' => ['sometimes', 'string', 'max:80'],
+            'metadata' => ['sometimes', 'array:manufacturer,model,release,sdkInt,brand,device,buildId,isTelevision,os_version,locale'],
+            'metadata.*' => ['nullable', 'string', 'max:255'],
             'device_name' => ['sometimes', 'nullable', 'string', 'max:255'],
             'ip_address' => ['required', 'string', 'max:45'],
         ]);
@@ -69,9 +77,11 @@ class DeviceAuthController extends Controller
 
         $device = Device::query()->where('device_id', $data['device_id'])->first();
 
-        if ($device === null) {
+        if ($device === null || $device->isdeleted || $device->login_method !== 'activation') {
             return response()->json(['message' => __('api.unknown_device')], 404);
         }
+
+        abort_if($device->installationDenied(), 403);
 
         if ($device->locked_until && $device->locked_until->isFuture()) {
             return response()->json([
@@ -155,11 +165,14 @@ class DeviceAuthController extends Controller
             $device->revokeAllTokens();
         }
 
+        $device->recordEvent('login:activation');
         $token = $device->createToken('device')->plainTextToken;
 
         $device->failed_login_attempts = 0;
         $device->locked_until = null;
         $device->last_login_at = now();
+        $device->last_seen_at = now();
+        $device->public_ip = $request->ip();
         $device->save();
 
         return response()->json([
@@ -189,6 +202,11 @@ class DeviceAuthController extends Controller
 
     private function syncDeviceName(Device $device, array $data): void
     {
+        $device->forceFill(array_filter([
+            'platform' => $data['platform'] ?? null,
+            'app_version' => $data['app_version'] ?? null,
+            'device_metadata' => $data['metadata'] ?? null,
+        ], fn ($value) => $value !== null));
         if (! array_key_exists('device_name', $data)) {
             return;
         }

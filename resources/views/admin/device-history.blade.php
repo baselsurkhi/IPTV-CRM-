@@ -1,0 +1,3 @@
+<div style="overflow:auto"><table style="width:100%;text-align:start;border-collapse:collapse">
+<thead><tr><th>{{ __('control.event') }}</th><th>{{ __('control.actor') }}</th><th>{{ __('control.time') }}</th></tr></thead>
+<tbody>@forelse($events as $event)<tr style="border-top:1px solid #cbd5e144"><td style="padding:12px">{{ __('control.events.'.$event->event) }}</td><td>{{ $event->actor_name ?? __('control.device_actor') }}</td><td dir="ltr">{{ $event->created_at }}</td></tr>@empty<tr><td colspan="3">{{ __('control.no_events') }}</td></tr>@endforelse</tbody></table></div>

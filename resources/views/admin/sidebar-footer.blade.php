@@ -1,0 +1,1 @@
+<div class="studio-sidebar-footer"><span class="studio-footer-mark">@svg('heroicon-o-command-line')</span><div><strong>IPTV Workspace</strong><span>{{ __('studio.administration') }}</span></div></div>

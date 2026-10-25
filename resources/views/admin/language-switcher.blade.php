@@ -1,0 +1,1 @@
+<nav class="studio-locales" aria-label="{{ __('admin.profile_locale') }}">@foreach(config('app.supported_locales', ['ar','en']) as $locale)<a href="{{ route('locale.switch', ['locale' => $locale]) }}" lang="{{ $locale }}" @if(app()->getLocale() === $locale) aria-current="true" @endif>{{ strtoupper($locale) }}</a>@endforeach</nav>

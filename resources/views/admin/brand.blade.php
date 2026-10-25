@@ -1,0 +1,1 @@
+<span class="studio-brand" dir="ltr"><span class="studio-brand-mark"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 5v14l12-7L8 5Z" fill="currentColor"/><path d="M3 5v14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span><span>IPTV<small>WORKSPACE</small></span></span>

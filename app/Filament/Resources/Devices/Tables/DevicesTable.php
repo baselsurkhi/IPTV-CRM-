@@ -15,9 +15,11 @@ use Filament\Forms\Components\TextInput;
 use Filament\Support\Enums\FontWeight;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 
 class DevicesTable
@@ -25,23 +27,32 @@ class DevicesTable
     public static function configure(Table $table): Table
     {
         return $table
+            ->defaultSort('last_seen_at', 'desc')
+            ->poll('30s')
             ->columns([
+                TextColumn::make('subscriber_name')->label(__('control.subscriber'))->searchable()->placeholder('—'),
+                TextColumn::make('login_method')->label(__('control.method'))->badge()
+                    ->formatStateUsing(fn (string $state): string => __('control.'.$state)),
+                TextColumn::make('platform')->label(__('control.platform'))->badge()->placeholder('—'),
+                TextColumn::make('last_seen_at')->label(__('control.last_seen'))->since()->sortable()
+                    ->description(fn (Device $record): string => $record->last_seen_at?->gt(now()->subSeconds(90)) && $record->tokens()->exists() ? __('control.recently_online') : __('control.offline')),
+                TextColumn::make('app_version')->label(__('control.version'))->toggleable(isToggledHiddenByDefault: true),
+                TextColumn::make('public_ip')->label(__('control.public_ip'))->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('device_id')
-                    ->label('Device ID')
+                    ->label('Device ID')->toggleable(isToggledHiddenByDefault: true)
                     ->searchable()
                     ->copyable()
                     ->fontFamily('mono')
                     ->weight(FontWeight::Medium),
                 TextColumn::make('device_name')
                     ->label(__('admin.device_name'))
-                    ->searchable()
-                    ->toggleable(),
+                    ->searchable(),
                 TextColumn::make('registered_ip')
-                    ->label(__('admin.registered_ip'))
+                    ->label(__('admin.registered_ip'))->toggleable(isToggledHiddenByDefault: true)
                     ->searchable(),
                 TextColumn::make('last_seen_ip')
                     ->label(__('admin.last_ip'))
-                    ->toggleable(),
+                    ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('status')
                     ->label(__('admin.status'))
                     ->badge()
@@ -55,15 +66,15 @@ class DevicesTable
                 TextColumn::make('iptv_username')
                     ->label(__('admin.iptv_username'))
                     ->copyable()
-                    ->toggleable(),
+                    ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('subscription_plan')
                     ->label(__('admin.subscription_plan'))
                     ->badge()
                     ->formatStateUsing(fn (?SubscriptionPlan $state): string => $state?->label() ?? '—')
                     ->color(fn (?SubscriptionPlan $state): string => $state?->color() ?? 'gray')
-                    ->toggleable(),
+                    ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('subscription_state')
-                    ->label(__('admin.subscription_status'))
+                    ->label(__('admin.subscription_status'))->toggleable(isToggledHiddenByDefault: true)
                     ->badge()
                     ->state(fn (Device $record): string => $record->subscriptionStatus())
                     ->formatStateUsing(fn (string $state): string => match ($state) {
@@ -97,7 +108,7 @@ class DevicesTable
                         'expired', 'blocked' => 'danger',
                         default => 'info',
                     })
-                    ->toggleable(),
+                    ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('expires_at')
                     ->label(__('admin.subscription_expires'))
                     ->dateTime()
@@ -107,7 +118,7 @@ class DevicesTable
                         'expired' => 'danger',
                         default => 'gray',
                     })
-                    ->toggleable(),
+                    ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('last_login_at')
                     ->label(__('admin.last_login'))
                     ->dateTime()
@@ -125,6 +136,11 @@ class DevicesTable
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
+                SelectFilter::make('login_method')->label(__('control.method'))->options([
+                    'activation' => __('control.activation'), 'xtream' => 'Xtream', 'm3u' => 'M3U',
+                ]),
+                Filter::make('online')->label(__('control.recently_online'))
+                    ->query(fn ($query) => $query->where('last_seen_at', '>', now()->subSeconds(90))->whereHas('tokens')),
                 SelectFilter::make('status')
                     ->label(__('admin.devices_filter_status'))
                     ->options(
@@ -181,6 +197,15 @@ class DevicesTable
                     }),
 
                 ActionGroup::make([
+                    Action::make('history')->label(__('control.history'))->icon(Heroicon::Clock)
+                        ->authorize(fn (Device $record): bool => Gate::allows('view', $record))
+                        ->modalSubmitAction(false)->modalCancelActionLabel(__('control.close'))
+                        ->modalContent(fn (Device $record) => view('admin.device-history', ['events' => DB::table('device_events')->leftJoin('users', 'users.id', '=', 'device_events.actor_id')->where('device_events.device_id', $record->id)->select('device_events.*', 'users.name as actor_name')->orderByDesc('device_events.id')->limit(50)->get()])),
+                    Action::make('unblock')->label(__('control.unblock'))->icon(Heroicon::CheckCircle)
+                        ->color('success')->requiresConfirmation()
+                        ->authorize(fn (Device $record): bool => Gate::allows('update', $record))
+                        ->visible(fn (Device $record): bool => $record->status === DeviceStatus::Blocked)
+                        ->action(fn (Device $record) => $record->update(['status' => $record->login_method === 'activation' ? DeviceStatus::Pending : DeviceStatus::Approved, 'blocked_at' => null])),
                     Action::make('reject')
                         ->label(__('admin.reject_action'))
                         ->icon(Heroicon::XCircle)
@@ -218,6 +243,7 @@ class DevicesTable
 
                     Action::make('revokeSessions')
                         ->label(__('admin.revoke_sessions_action'))
+                        ->modalDescription(__('control.kick_help'))
                         ->icon(Heroicon::ArrowRight)
                         ->requiresConfirmation()
                         ->authorize(fn (Device $record): bool => Gate::allows('update', $record))

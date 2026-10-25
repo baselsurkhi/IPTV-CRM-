@@ -8,9 +8,11 @@ use App\Models\Concerns\HasSubscription;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\HasApiTokens;
 
 #[Fillable([
+    'installation_secret_hash',
     'device_id',
     'device_name',
     'subscriber_name',
@@ -39,9 +41,28 @@ class Device extends Model
 {
     use HasApiTokens, HasSubscription;
 
+    protected $hidden = ['installation_secret_hash', 'iptv_password'];
+
+    protected static function booted(): void
+    {
+        static::updated(function (Device $device): void {
+            if ($device->wasChanged('status')) {
+                $device->recordEvent('status:'.$device->status->value);
+            }
+            if ($device->wasChanged('isdeleted')) {
+                $device->recordEvent($device->isdeleted ? 'deleted' : 'restored');
+            }
+            if ($device->isdeleted || in_array($device->status, [DeviceStatus::Blocked, DeviceStatus::Rejected], true)) {
+                $device->revokeAllTokens();
+            }
+        });
+    }
+
     protected function casts(): array
     {
         return [
+            'last_seen_at' => 'datetime',
+            'device_metadata' => 'array',
             'status' => DeviceStatus::class,
             'iptv_password' => 'encrypted',
             'approved_at' => 'datetime',
@@ -61,9 +82,36 @@ class Device extends Model
         return $this->belongsTo(User::class, 'approved_by');
     }
 
+    public function recordEvent(string $event): void
+    {
+        $actor = auth()->user();
+        DB::table('device_events')->insert([
+            'device_id' => $this->id, 'actor_id' => $actor instanceof User ? $actor->id : null,
+            'event' => $event, 'created_at' => now(),
+        ]);
+    }
+
+    public function installationIds(): array
+    {
+        $id = str_starts_with($this->device_id, 'managed-') ? substr($this->device_id, 8) : $this->device_id;
+
+        return [$id, 'managed-'.$id];
+    }
+
+    public function installationDenied(): bool
+    {
+        return self::query()->whereIn('device_id', $this->installationIds())
+            ->where(fn ($q) => $q->where('isdeleted', true)->orWhereIn('status', [DeviceStatus::Blocked, DeviceStatus::Rejected]))->exists();
+    }
+
     public function revokeAllTokens(): void
     {
-        $this->tokens()->delete();
+        foreach (self::query()->whereIn('device_id', $this->installationIds())->get() as $device) {
+            if ($device->tokens()->exists()) {
+                $device->recordEvent('sessions_revoked');
+            }
+            $device->tokens()->delete();
+        }
     }
 
     public function hasPlayerCredentials(): bool
@@ -88,6 +136,10 @@ class Device extends Model
     {
         if ($this->status === DeviceStatus::Blocked) {
             return 'blocked';
+        }
+
+        if ($this->login_method !== 'activation') {
+            return 'ready';
         }
 
         if ($this->expires_at === null) {
