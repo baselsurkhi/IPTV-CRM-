@@ -3,9 +3,11 @@
 namespace Tests\Feature;
 
 use App\Enums\DeviceStatus;
+use App\Filament\Resources\Devices\Pages\EditDevice;
 use App\Models\Device;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Livewire\Livewire;
 use Tests\TestCase;
 
 class ManagedSessionTest extends TestCase
@@ -68,7 +70,7 @@ class ManagedSessionTest extends TestCase
         $admin = User::factory()->create(['locale' => 'en']);
         $admin->assignRole('super-admin');
         $this->actingAs($admin)->get('/admin/device-registry/'.$device->id.'/edit')->assertOk()->assertSee('M3U playlist URL');
-        \Livewire\Livewire::test(\App\Filament\Resources\Devices\Pages\EditDevice::class, ['record' => $device->id])
+        Livewire::test(EditDevice::class, ['record' => $device->id])
             ->assertSchemaStateSet(['m3u_source_url' => $url]);
     }
 
@@ -97,7 +99,7 @@ class ManagedSessionTest extends TestCase
     public function test_installation_secret_cannot_be_replaced(): void
     {
         $this->login();
-        $this->postJson('/api/v1/device/direct-session', $this->payload(['installation_secret' => str_repeat('b', 64)]))->assertForbidden();
+        $this->postJson('/api/v1/device/direct-session', $this->payload(['installation_secret' => str_repeat('b', 64)]))->assertForbidden()->assertJsonPath('code', 'installation_secret_mismatch');
         $this->assertSame(1, Device::first()->tokens()->count());
     }
 
@@ -114,7 +116,7 @@ class ManagedSessionTest extends TestCase
     {
         $this->login();
         Device::first()->update(['isdeleted' => true]);
-        $this->postJson('/api/v1/device/direct-session', $this->payload())->assertForbidden();
+        $this->postJson('/api/v1/device/direct-session', $this->payload())->assertForbidden()->assertJsonPath('code', 'device_deleted');
         $this->assertDatabaseCount('personal_access_tokens', 0);
     }
 
@@ -144,7 +146,38 @@ class ManagedSessionTest extends TestCase
     public function test_blocked_activation_cannot_bypass_by_switching_to_direct(): void
     {
         Device::create(['device_id' => $this->payload()['device_id'], 'registered_ip' => '127.0.0.1', 'status' => DeviceStatus::Blocked]);
+        $this->postJson('/api/v1/device/direct-session', $this->payload())->assertForbidden()->assertJsonPath('code', 'device_blocked');
+        $this->assertDatabaseCount('devices', 1);
+    }
+
+    public function test_restore_access_repairs_both_records_and_preserves_credentials(): void
+    {
+        $this->login(['login_method' => 'm3u']);
+        $managed = Device::firstOrFail();
+        $hash = $managed->installation_secret_hash;
+        $managed->update(['isdeleted' => true, 'status' => DeviceStatus::Rejected]);
+        $activation = Device::create(['device_id' => $this->payload()['device_id'], 'registered_ip' => '127.0.0.1', 'status' => DeviceStatus::Blocked]);
+        $other = Device::create(['device_id' => 'other-device', 'registered_ip' => '127.0.0.1', 'status' => DeviceStatus::Blocked]);
+
+        $this->artisan('devices:restore-access', ['device_id' => $managed->device_id])->assertSuccessful();
+        $this->assertTrue($managed->fresh()->isdeleted);
         $this->postJson('/api/v1/device/direct-session', $this->payload())->assertForbidden();
+
+        $this->artisan('devices:restore-access', ['device_id' => $managed->device_id, '--apply' => true])->assertSuccessful();
+        $this->assertSame($hash, $managed->fresh()->installation_secret_hash);
+        $this->assertSame(DeviceStatus::Pending, $activation->fresh()->status);
+        $this->assertNull($activation->fresh()->expires_at);
+        $this->assertSame(DeviceStatus::Blocked, $other->fresh()->status);
+        $this->login(['login_method' => 'm3u']);
+    }
+
+    public function test_rejected_device_returns_actionable_message(): void
+    {
+        $this->login();
+        Device::first()->update(['status' => DeviceStatus::Rejected]);
+        $response = $this->postJson('/api/v1/device/direct-session', $this->payload())
+            ->assertForbidden()->assertJsonPath('code', 'device_rejected');
+        $this->assertNotEmpty($response->json('message'));
     }
 
     public function test_direct_record_cannot_request_provider_credentials(): void
@@ -161,7 +194,7 @@ class ManagedSessionTest extends TestCase
         $this->actingAs($admin)->get('/admin')->assertOk()->assertSee('Welcome back')->assertSee('Recently active devices');
         $this->get('/admin/device-registry')->assertOk()->assertSee('Living room');
         $this->get('/admin/device-registry/'.Device::first()->id.'/edit')->assertOk()->assertSee('Device details')->assertSee('Xtream server URL');
-        \Livewire\Livewire::test(\App\Filament\Resources\Devices\Pages\EditDevice::class, ['record' => Device::first()->id])
+        Livewire::test(EditDevice::class, ['record' => Device::first()->id])
             ->assertSchemaStateSet(['xtream_server_url' => 'https://provider.example:8443']);
     }
 

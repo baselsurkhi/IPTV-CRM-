@@ -101,8 +101,23 @@ class Device extends Model
 
     public function installationDenied(): bool
     {
-        return self::query()->whereIn('device_id', $this->installationIds())
-            ->where(fn ($q) => $q->where('isdeleted', true)->orWhereIn('status', [DeviceStatus::Blocked, DeviceStatus::Rejected]))->exists();
+        return $this->installationDenialCode() !== null;
+    }
+
+    public function installationDenialCode(): ?string
+    {
+        $records = self::query()->whereIn('device_id', $this->installationIds())->get();
+        if ($records->contains(fn (Device $device) => $device->isdeleted)) {
+            return 'device_deleted';
+        }
+        if ($records->contains(fn (Device $device) => $device->status === DeviceStatus::Blocked)) {
+            return 'device_blocked';
+        }
+        if ($records->contains(fn (Device $device) => $device->status === DeviceStatus::Rejected)) {
+            return 'device_rejected';
+        }
+
+        return null;
     }
 
     public function revokeAllTokens(): void
