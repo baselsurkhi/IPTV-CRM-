@@ -198,7 +198,8 @@ class Device extends Model
     {
         $base = trim($base);
         $base = preg_replace('/[?#].*$/', '', $base) ?: $base;
-        $base = preg_replace('/^http:\/\//i', 'https://', $base) ?: $base;
+        // Preserve the provider's configured scheme and port; some Xtream
+        // servers only accept HTTP and cannot be upgraded to HTTPS.
 
         return rtrim($base, '/?');
     }

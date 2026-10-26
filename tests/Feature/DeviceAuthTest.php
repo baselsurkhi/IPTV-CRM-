@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\DeviceStatus;
 use App\Enums\SubscriptionPlan;
 use App\Models\Device;
+use App\Models\SiteSetting;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -93,9 +94,35 @@ class DeviceAuthTest extends TestCase
 
         $res->assertOk();
         $this->assertSame(
-            'https://cf.tcl-system.com/player_api.php?username=05482222112&password=20304050',
+            'http://cf.tcl-system.com/player_api.php?username=05482222112&password=20304050',
             $res->json('player_api_url')
         );
+    }
+
+    public function test_player_url_preserves_scheme_port_and_path_from_each_configuration_source(): void
+    {
+        $device = new Device([
+            'iptv_username' => 'test user',
+            'iptv_password' => 'pass&word',
+        ]);
+
+        foreach (['http://provider.example:8080/sub/player_api.php', 'https://provider.example:8443/sub/player_api.php'] as $base) {
+            $configured = $base.'?username=old&password=old#fragment';
+            $expected = $base.'?username=test+user&password=pass%26word';
+
+            SiteSetting::setValue('iptv.player_api_base_url', null);
+            config(['iptv.player_api_base_url' => $configured]);
+            $device->player_api_base_url = null;
+            $this->assertSame($expected, $device->playerApiUrl());
+
+            config(['iptv.player_api_base_url' => 'https://unused.example/player_api.php']);
+            SiteSetting::setValue('iptv.player_api_base_url', $configured);
+            $this->assertSame($expected, $device->playerApiUrl());
+
+            SiteSetting::setValue('iptv.player_api_base_url', 'https://unused.example/player_api.php');
+            $device->player_api_base_url = $configured;
+            $this->assertSame($expected, $device->playerApiUrl());
+        }
     }
 
     public function test_session_requires_an_active_subscription(): void
