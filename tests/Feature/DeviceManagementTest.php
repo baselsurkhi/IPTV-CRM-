@@ -181,4 +181,30 @@ class DeviceManagementTest extends TestCase
             $this->assertSame(0, $device->tokens()->count());
         }
     }
+
+    public function test_legacy_deleted_repair_revokes_linked_sessions_and_preserves_data(): void
+    {
+        $deleted = Device::create(['device_id' => 'legacy', 'registered_ip' => '192.0.2.1',
+            'isdeleted' => true, 'status' => DeviceStatus::Approved,
+            'expires_at' => now()->addMonth(), 'iptv_username' => 'legacy', 'iptv_password' => 'secret']);
+        $linked = Device::create(['device_id' => 'managed-legacy', 'registered_ip' => '192.0.2.1', 'status' => DeviceStatus::Approved]);
+        $untouched = Device::create(['device_id' => 'unrelated', 'registered_ip' => '192.0.2.2', 'status' => DeviceStatus::Approved]);
+        foreach ([$deleted, $linked, $untouched] as $device) {
+            $device->createToken('existing');
+        }
+        $this->assertFalse($deleted->isApiReady());
+        $this->assertSame('blocked', $deleted->apiAccessState());
+        $this->artisan('devices:repair-deleted')->assertSuccessful();
+        $this->assertSame(DeviceStatus::Approved, $deleted->fresh()->status);
+        $this->artisan('devices:repair-deleted', ['--apply' => true])->assertSuccessful();
+        $this->artisan('devices:repair-deleted', ['--apply' => true])->assertSuccessful();
+        $this->assertSame(DeviceStatus::Rejected, $deleted->refresh()->status);
+        $this->assertTrue($deleted->isdeleted);
+        $this->assertTrue($deleted->isSubscribed());
+        $this->assertSame('secret', $deleted->iptv_password);
+        $this->assertSame(0, $deleted->tokens()->count());
+        $this->assertSame(0, $linked->tokens()->count());
+        $this->assertSame(1, $untouched->tokens()->count());
+        $this->assertSame(DeviceStatus::Approved, $untouched->fresh()->status);
+    }
 }
