@@ -37,7 +37,7 @@ class DeviceResource extends Resource
 
     public static function getNavigationLabel(): string
     {
-        return __('admin.navigation.devices');
+        return __('workflow.page');
     }
 
     public static function getModelLabel(): string
@@ -47,7 +47,7 @@ class DeviceResource extends Resource
 
     public static function getPluralModelLabel(): string
     {
-        return __('admin.navigation.devices');
+        return __('workflow.page');
     }
 
     public static function form(Schema $schema): Schema
@@ -62,7 +62,7 @@ class DeviceResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
-        return parent::getEloquentQuery()->where('isdeleted', false);
+        return parent::getEloquentQuery();
     }
 
     public static function getRecordTitle(?Model $record): string|Htmlable|null
@@ -96,7 +96,7 @@ class DeviceResource extends Resource
 
     public static function canEdit($record): bool
     {
-        return auth()->check() && auth()->user()->can('update', $record);
+        return ! $record->isdeleted && auth()->check() && auth()->user()->can('update', $record);
     }
 
     public static function canDelete($record): bool

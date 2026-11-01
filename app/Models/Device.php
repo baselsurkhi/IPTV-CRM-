@@ -120,6 +120,18 @@ class Device extends Model
         return null;
     }
 
+    public function moveToDeleted(): bool
+    {
+        return DB::transaction(fn (): bool => $this->update([
+            'isdeleted' => true,
+            'status' => DeviceStatus::Rejected,
+            'rejected_at' => now(),
+            'blocked_at' => null,
+            'approved_at' => null,
+            'approved_by' => null,
+        ]));
+    }
+
     public function revokeAllTokens(): void
     {
         foreach (self::query()->whereIn('device_id', $this->installationIds())->get() as $device) {
@@ -177,9 +189,21 @@ class Device extends Model
         return 'ready';
     }
 
+    public function unblock(): void
+    {
+        $this->update([
+            'status' => $this->login_method !== 'activation' || ($this->hasPlayerCredentials() && $this->isSubscribed())
+                ? DeviceStatus::Approved : DeviceStatus::Pending,
+            'blocked_at' => null,
+            'rejected_at' => null,
+            'failed_login_attempts' => 0,
+            'locked_until' => null,
+        ]);
+    }
+
     public function approveForApi(?int $approvedBy = null): void
     {
-        if ($this->status === DeviceStatus::Blocked || ! $this->hasPlayerCredentials()) {
+        if ($this->isdeleted || $this->status === DeviceStatus::Blocked || ! $this->hasPlayerCredentials()) {
             return;
         }
 

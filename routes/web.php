@@ -19,8 +19,10 @@ Route::prefix('admin')
             return redirect('/admin/device-registry');
         })->name('devices.index');
 
+        Route::redirect('/device-subscriptions', '/admin/device-registry');
+
         Route::get('/subscriptions', function () {
-            return redirect('/admin/device-subscriptions');
+            return redirect('/admin/device-registry');
         })->name('subscriptions.index');
 
     });
