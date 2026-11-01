@@ -17,17 +17,23 @@ class ListDevices extends ListRecords
         $base = Device::query()->where('isdeleted', false);
 
         return [
-            'all' => Tab::make(__('studio.all'))->badge((clone $base)->count()),
-            'pending' => Tab::make(__('studio.pending'))->badge((clone $base)->where('status', 'pending')->count())->modifyQueryUsing(fn ($query) => $query->where('status', 'pending')),
-            'approved' => Tab::make(__('admin.stats_approved'))->modifyQueryUsing(fn ($query) => $query->where('status', 'approved')),
-            'blocked' => Tab::make(__('admin.stats_blocked'))->modifyQueryUsing(fn ($query) => $query->whereIn('status', ['blocked', 'rejected'])),
+            'all' => Tab::make(__('studio.all'))->badge((clone $base)->count())->modifyQueryUsing(fn ($query) => $query->where('isdeleted', false)),
+            'pending' => Tab::make(__('studio.pending'))->badge((clone $base)->where('status', 'pending')->count())->modifyQueryUsing(fn ($query) => $query->where('isdeleted', false)->where('status', 'pending')),
+            'approved' => Tab::make(__('admin.stats_approved'))->modifyQueryUsing(fn ($query) => $query->where('isdeleted', false)->where('status', 'approved')),
+            'blocked' => Tab::make(__('admin.stats_blocked'))->modifyQueryUsing(fn ($query) => $query->where('isdeleted', false)->whereIn('status', ['blocked', 'rejected'])),
+            'deleted' => Tab::make(__('workflow.deleted'))->badge(Device::where('isdeleted', true)->count())->modifyQueryUsing(fn ($query) => $query->where('isdeleted', true)),
         ];
+    }
+
+    public function getDefaultActiveTab(): string
+    {
+        return 'all';
     }
 
     protected function getHeaderActions(): array
     {
         return [
-            CreateAction::make(),
+            CreateAction::make()->label(__('workflow.add')),
         ];
     }
 }

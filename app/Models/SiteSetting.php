@@ -20,6 +20,13 @@ class SiteSetting extends Model
         });
     }
 
+    public static function defaultPlayerApiUrl(): ?string
+    {
+        $url = trim((string) (static::getValue('iptv.player_api_base_url') ?: config('iptv.player_api_base_url')));
+
+        return $url !== '' ? $url : null;
+    }
+
     public static function setValue(string $key, ?string $value): void
     {
         static::query()->updateOrCreate(

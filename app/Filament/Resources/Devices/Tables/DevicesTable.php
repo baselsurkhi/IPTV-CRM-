@@ -5,19 +5,24 @@ namespace App\Filament\Resources\Devices\Tables;
 use App\Authorization\PermissionsRegistry;
 use App\Enums\DeviceStatus;
 use App\Enums\SubscriptionPlan;
+use App\Filament\Resources\Devices\Actions\ManageSubscription;
+use App\Filament\Resources\Devices\DeviceResource;
 use App\Models\Device;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
 use Filament\Actions\BulkAction;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\EditAction;
-use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\Textarea;
 use Filament\Support\Enums\FontWeight;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -64,7 +69,7 @@ class DevicesTable
                         DeviceStatus::Blocked => 'danger',
                     }),
                 TextColumn::make('iptv_username')
-                    ->label(__('admin.iptv_username'))
+                    ->label(__('admin.iptv_username'))->searchable()
                     ->copyable()
                     ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('subscription_plan')
@@ -72,9 +77,9 @@ class DevicesTable
                     ->badge()
                     ->formatStateUsing(fn (?SubscriptionPlan $state): string => $state?->label() ?? '—')
                     ->color(fn (?SubscriptionPlan $state): string => $state?->color() ?? 'gray')
-                    ->toggleable(isToggledHiddenByDefault: true),
+                    ->toggleable(),
                 TextColumn::make('subscription_state')
-                    ->label(__('admin.subscription_status'))->toggleable(isToggledHiddenByDefault: true)
+                    ->label(__('admin.subscription_status'))->toggleable()
                     ->badge()
                     ->state(fn (Device $record): string => $record->subscriptionStatus())
                     ->formatStateUsing(fn (string $state): string => match ($state) {
@@ -118,7 +123,7 @@ class DevicesTable
                         'expired' => 'danger',
                         default => 'gray',
                     })
-                    ->toggleable(isToggledHiddenByDefault: true),
+                    ->toggleable(),
                 TextColumn::make('m3u_source_url')
                     ->label(__('control.m3u_source_url'))
                     ->placeholder('—')->copyable()->limit(35)
@@ -146,6 +151,24 @@ class DevicesTable
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
+                SelectFilter::make('subscription_plan')->label(__('admin.subscription_plan'))
+                    ->options(collect(SubscriptionPlan::cases())->mapWithKeys(fn (SubscriptionPlan $plan): array => [$plan->value => $plan->label()])->all()),
+                SelectFilter::make('subscription_status')->label(__('admin.subscription_filter_status'))
+                    ->options([
+                        'active' => __('admin.subscription_active'),
+                        'expiring_soon' => __('admin.subscription_expiring'),
+                        'expired' => __('admin.subscription_expired'),
+                        'none' => __('admin.subscription_none'),
+                    ])
+                    ->query(function (Builder $query, array $data): void {
+                        match ($data['value'] ?? null) {
+                            'active' => $query->where('expires_at', '>', now()),
+                            'expiring_soon' => $query->whereBetween('expires_at', [now(), now()->addDays(7)]),
+                            'expired' => $query->where('expires_at', '<=', now()),
+                            'none' => $query->whereNull('expires_at'),
+                            default => null,
+                        };
+                    }),
                 SelectFilter::make('login_method')->label(__('control.method'))->options([
                     'activation' => __('control.activation'), 'xtream' => 'Xtream', 'm3u' => 'M3U',
                 ]),
@@ -162,51 +185,63 @@ class DevicesTable
             ->striped()
             ->paginated([25, 50, 100])
             ->recordActions([
-                Action::make('approve')
-                    ->label(__('admin.approve_action'))
-                    ->icon(Heroicon::CheckCircle)
-                    ->color('success')
+                ManageSubscription::make(),
+                Action::make('setup')
+                    ->label(__('workflow.manage'))
+                    ->icon(Heroicon::PencilSquare)
                     ->authorize(fn (Device $record): bool => Gate::allows('update', $record))
-                    ->schema([
-                        TextInput::make('iptv_username')
-                            ->label(__('admin.players_username'))
-                            ->required(),
-                        TextInput::make('iptv_password')
-                            ->label(__('admin.players_password'))
-                            ->password()
-                            ->required(),
-                        TextInput::make('player_api_base_url')
-                            ->label(__('admin.player_api_url_modal'))
-                            ->url()
-                            ->default(config('iptv.player_api_base_url')),
-                    ])
-                    ->visible(fn (Device $record): bool => in_array($record->status, [DeviceStatus::Pending, DeviceStatus::Rejected], true))
-                    ->action(function (Device $record, array $data): void {
-                        $record->revokeAllTokens();
-
-                        $url = isset($data['player_api_base_url']) && is_string($data['player_api_base_url']) && $data['player_api_base_url'] !== ''
-                            ? rtrim($data['player_api_base_url'], '?')
-                            : null;
-
-                        $record->update([
-                            'status' => DeviceStatus::Approved,
-                            'iptv_username' => $data['iptv_username'],
-                            'iptv_password' => $data['iptv_password'],
-                            'player_api_base_url' => $url,
-                            'approved_at' => now(),
-                            'approved_by' => Auth::id(),
-                            'rejected_at' => null,
-                            'blocked_at' => null,
-                            'failed_login_attempts' => 0,
-                            'locked_until' => null,
-                        ]);
-
-                        if ($record->isSubscribed()) {
-                            $record->approveForApi(Auth::id());
-                        }
-                    }),
+                    ->visible(fn (Device $record): bool => ! $record->isdeleted)
+                    ->url(fn (Device $record): string => DeviceResource::getUrl('edit', ['record' => $record])),
+                Action::make('restore')
+                    ->label(__('workflow.restore'))->icon(Heroicon::ArrowPath)->color('success')
+                    ->requiresConfirmation()
+                    ->authorize(fn (Device $record): bool => Gate::allows('update', $record))
+                    ->visible(fn (Device $record): bool => $record->isdeleted)
+                    ->action(fn (Device $record): bool => $record->update(['isdeleted' => false])),
 
                 ActionGroup::make([
+                    Action::make('setExpiry')
+                        ->label(__('admin.subscription_set_expiry_action'))
+                        ->icon(Heroicon::Calendar)
+                        ->color('info')
+                        ->visible(fn (Device $record): bool => ! $record->isdeleted && $record->login_method === 'activation')
+                        ->authorize(fn (Device $record): bool => Gate::allows('update', $record))
+                        ->schema([
+                            DatePicker::make('expires_at')
+                                ->label(__('admin.subscription_expires'))
+                                ->minDate(now()->addDay())
+                                ->required(),
+                            Textarea::make('notes')
+                                ->label(__('admin.subscription_notes'))
+                                ->maxLength(1000),
+                        ])
+                        ->action(function (Device $record, array $data): void {
+                            $record->setExpiryDate(
+                                date: Carbon::parse($data['expires_at']),
+                                renewedBy: Auth::user()?->email,
+                                notes: $data['notes'] ?? null,
+                            );
+                        }),
+
+                    Action::make('cancelSubscription')
+                        ->label(__('admin.subscription_cancel_action'))
+                        ->icon(Heroicon::XMark)
+                        ->color('danger')
+                        ->requiresConfirmation()
+                        ->visible(fn (Device $record): bool => ! $record->isdeleted && $record->login_method === 'activation')
+                        ->authorize(fn (Device $record): bool => Gate::allows('update', $record))
+                        ->schema([
+                            Textarea::make('notes')
+                                ->label(__('admin.subscription_notes'))
+                                ->maxLength(1000),
+                        ])
+                        ->action(function (Device $record, array $data): void {
+                            $record->cancelSubscription(
+                                renewedBy: Auth::user()?->email,
+                                notes: $data['notes'] ?? null,
+                            );
+                        }),
+
                     Action::make('history')->label(__('control.history'))->icon(Heroicon::Clock)
                         ->authorize(fn (Device $record): bool => Gate::allows('view', $record))
                         ->modalSubmitAction(false)->modalCancelActionLabel(__('control.close'))
@@ -214,15 +249,15 @@ class DevicesTable
                     Action::make('unblock')->label(__('control.unblock'))->icon(Heroicon::CheckCircle)
                         ->color('success')->requiresConfirmation()
                         ->authorize(fn (Device $record): bool => Gate::allows('update', $record))
-                        ->visible(fn (Device $record): bool => $record->status === DeviceStatus::Blocked)
-                        ->action(fn (Device $record) => $record->update(['status' => $record->login_method === 'activation' ? DeviceStatus::Pending : DeviceStatus::Approved, 'blocked_at' => null])),
+                        ->visible(fn (Device $record): bool => ! $record->isdeleted && $record->status === DeviceStatus::Blocked)
+                        ->action(fn (Device $record) => $record->unblock()),
                     Action::make('reject')
                         ->label(__('admin.reject_action'))
                         ->icon(Heroicon::XCircle)
                         ->color('gray')
                         ->requiresConfirmation()
                         ->authorize(fn (Device $record): bool => Gate::allows('update', $record))
-                        ->visible(fn (Device $record): bool => $record->status === DeviceStatus::Pending)
+                        ->visible(fn (Device $record): bool => ! $record->isdeleted && $record->status === DeviceStatus::Pending)
                         ->action(function (Device $record): void {
                             $record->update([
                                 'status' => DeviceStatus::Rejected,
@@ -242,7 +277,7 @@ class DevicesTable
                         ->color('danger')
                         ->requiresConfirmation()
                         ->authorize(fn (Device $record): bool => Gate::allows('update', $record))
-                        ->visible(fn (Device $record): bool => $record->status !== DeviceStatus::Blocked)
+                        ->visible(fn (Device $record): bool => ! $record->isdeleted && $record->status !== DeviceStatus::Blocked)
                         ->action(function (Device $record): void {
                             $record->update([
                                 'status' => DeviceStatus::Blocked,
@@ -259,16 +294,17 @@ class DevicesTable
                         ->authorize(fn (Device $record): bool => Gate::allows('update', $record))
                         ->action(fn (Device $record) => $record->revokeAllTokens()),
 
-                    EditAction::make()
+                    EditAction::make()->visible(fn (Device $record): bool => ! $record->isdeleted)
                         ->authorize(fn (Device $record): bool => Gate::allows('update', $record)),
 
                     Action::make('softDelete')
+                        ->visible(fn (Device $record): bool => ! $record->isdeleted)
                         ->label(__('filament-actions::delete.single.label'))
                         ->icon(Heroicon::Trash)
                         ->color('danger')
                         ->requiresConfirmation()
                         ->authorize(fn (Device $record): bool => Gate::allows('delete', $record))
-                        ->action(fn (Device $record): bool => $record->update(['isdeleted' => true])),
+                        ->action(fn (Device $record): bool => $record->moveToDeleted()),
                 ])
                     ->label(__('admin.actions'))
                     ->icon(Heroicon::EllipsisVertical)
@@ -286,7 +322,7 @@ class DevicesTable
                             PermissionsRegistry::DEVICES_DELETE
                         ) === true)
                         ->action(function ($records): void {
-                            $records->each->update(['isdeleted' => true]);
+                            $records->each->moveToDeleted();
                         }),
                 ]),
             ]);

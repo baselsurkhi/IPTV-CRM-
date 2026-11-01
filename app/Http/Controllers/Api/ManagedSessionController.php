@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Enums\DeviceStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Device;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -36,8 +37,18 @@ class ManagedSessionController extends Controller
                 'installation_secret_hash' => hash('sha256', $data['installation_secret']),
             ]);
             $device = Device::query()->lockForUpdate()->findOrFail($device->id);
-            abort_unless(hash_equals($device->installation_secret_hash ?? '', hash('sha256', $data['installation_secret'])), 403);
-            abort_if($device->installationDenied(), 403);
+            if (! hash_equals($device->installation_secret_hash ?? '', hash('sha256', $data['installation_secret']))) {
+                throw new HttpResponseException(response()->json([
+                    'code' => 'installation_secret_mismatch',
+                    'message' => __('api.installation_secret_mismatch'),
+                ], 403));
+            }
+            if ($code = $device->installationDenialCode()) {
+                throw new HttpResponseException(response()->json([
+                    'code' => $code,
+                    'message' => __('api.'.$code),
+                ], 403));
+            }
             $device->forceFill([
                 'login_method' => $data['login_method'],
                 'm3u_source_url' => $data['login_method'] === 'm3u' ? ($data['m3u_source_url'] ?? null) : null,
