@@ -125,7 +125,7 @@ class Device extends Model
         return DB::transaction(fn (): bool => $this->update([
             'isdeleted' => true,
             'status' => DeviceStatus::Rejected,
-            'rejected_at' => now(),
+            'rejected_at' => $this->rejected_at ?? now(),
             'blocked_at' => null,
             'approved_at' => null,
             'approved_by' => null,
@@ -155,13 +155,17 @@ class Device extends Model
 
     public function isApiReady(): bool
     {
-        return $this->status === DeviceStatus::Approved
+        return ! $this->isdeleted && $this->status === DeviceStatus::Approved
             && $this->isSubscribed()
             && $this->hasPlayerCredentials();
     }
 
     public function apiAccessState(): string
     {
+        if ($this->isdeleted || $this->status === DeviceStatus::Rejected) {
+            return 'blocked';
+        }
+
         if ($this->status === DeviceStatus::Blocked) {
             return 'blocked';
         }
